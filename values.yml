@@ -1,0 +1,77 @@
+# Настройки Helm Chart Trefik для использования Gateway API
+
+# Отключаем ingress
+ingressClass:
+  enabled: false
+
+# Настройки сущности k8s (Gateway Listeners)
+# Порты сущности должны быть открыты через ports
+gateway:
+  listeners:
+    web:
+      port: 8080    # Порт сущности, котоый должен быть открыт через ports
+      protocol: HTTP
+      namespacePolicy:
+        from: All
+    traefik:
+      port: 8100
+      protocol: HTTP
+      namespacePolicy:
+        from: All
+
+# Настройки cервиса LB, пода traefik и его статической конфигурации EntryPoints
+ports:
+  web:
+    port: 8080    # Порт который слушает под (процесс traefik)
+    exposedPort: 8080    # Порт, который открывает Service LB на выданном IP
+    nodePort: 30080    # Порт, который открывается на всех нодах кластера для LB
+  traefik:
+    port: 8100
+    exposedPort: 8100
+    nodePort: 30100
+    expose:
+      default: true
+  metrics:
+    port: 9100
+    exposedPort: 9100
+    nodePort: 31100
+    expose:
+      default: true
+  # Отключаем websecure
+  websecure:
+    expose:
+      default: false
+
+# Включаем дашборд
+api:
+  insecure: false
+  dashboard: true
+  disableDashboardAd: true
+
+# Настраивается привязка дашборда и его правила маршрутизации
+ingressRoute:
+  dashboard:
+    enabled: true
+    matchRule: Host(`hostname`)    # УКАЗАТЬ ЗДЕСЬ ХОСТ
+    entryPoints:
+      - traefik
+
+# Настраиваем провайды для поиска настроек маршрутизации
+providers:
+  kubernetesIngress:
+    enabled: false
+  kubernetesGateway:
+    enabled: true
+
+# Включаем лог в принципе.
+log:
+  level: INFO
+
+# Включяем accessLog. [Access Logs Documentation](https://doc.traefik.io/traefik/observability/access-logs/)
+accessLog:
+  enabled: true
+
+# Включаем метрики для Prometheus
+metrics:
+  prometheus:
+    enabled: true

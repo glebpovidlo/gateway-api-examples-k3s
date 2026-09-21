@@ -1,93 +1,160 @@
 # traefik-gateway-api-example
 
+Пример настройки Traefik Gateway API для k3s.
 
+Для установки используется официальный Helm Chart установки Traefik в кластер.
+В моём случае я использую namespace с именем `traefik-system`
 
-## Getting started
+## Подготовка
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+docs: https://doc.traefik.io/traefik/setup/kubernetes/
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
-
-```
-cd existing_repo
-git remote add origin https://gitlab.raschet.by/product-team/devops/other/traefik-gateway-api-example.git
-git branch -M main
-git push -uf origin main
+Добавление репозитория:
+```bash
+helm repo add traefik https://traefik.github.io/charts
+helm repo update
 ```
 
-## Integrate with your tools
+Создание namespace:
+```
+kubectl create namespace traefik-system
+```
 
-* [Set up project integrations](https://gitlab.raschet.by/product-team/devops/other/traefik-gateway-api-example/-/settings/integrations)
+## Применение Helm Chart
 
-## Collaborate with your team
+Установка
+```
+helm install traefik traefik/traefik \
+  --namespace traefik-system \
+  --values values.yaml
+```
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+Обновление конфигурации
+```
+helm upgrade traefik traefik/traefik \
+  --namespace traefik-system \
+  --values values.yaml
+```
 
-## Test and Deploy
+Удаление Helm Chart
+```
+helm uninstall traefik --namespace traefik-system
+```
 
-Use the built-in continuous integration in GitLab.
+## Создаваемые Kubernetes-ресурсы
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
+### Общая картина
 
-***
+Чарт **отключает классический Ingress** и переводит Traefik в режим **Gateway API**. Дополнительно:
 
-# Editing this README
+- открывается **дашборд** через отдельный EntryPoint `traefik`,
+- включаются **метрики Prometheus** и **access-логи**,
+- порт `websecure` (HTTPS) **не публикуется наружу**, но может оставаться в конфигурации по умолчанию.
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+### 1. Deployment / DaemonSet (Traefik)
+- Запускается **под Traefik** с двумя контейнерами (сам Traefik + init-контейнер для настройки, если требуется).
+- **EntryPoints** внутри пода (статическая конфигурация):
+  | Имя | Порт контейнера | Назначение |
+  |---|---|---|
+  | `web` | `8080` | Приём HTTP-трафика от Gateway |
+  | `traefik` | `8100` | API + дашборд |
+  | `metrics` | `9100` | Prometheus-метрики |
+  | `websecure` | (по умолчанию) | не публикуется (`expose.default: false`) |
+- Включён **дашборд**, но **insecure API выключен** (`api.insecure: false`) — значит дашборд доступен только через EntryPoint `traefik` (`8100`).
 
-## Suggestions for a good README
+### 2. Service (LoadBalancer / NodePort)
+Kubernetes-сервис публикует порты:
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+| Имя порта | `port` (контейнер) | `exposedPort` (Service) | `nodePort` | Примечание |
+|---|---|---|---|---|
+| `web` | 8080 | 8080 | 30080 | Основной HTTP |
+| `traefik` | 8100 | 8100 | 30100 | API / дашборд |
+| `metrics` | 9100 | 9100 | 31100 | Метрики Prometheus |
+| `websecure` | — | — | — | Не публикуется |
 
-## Name
-Choose a self-explaining name for your project.
+> Тип сервиса зависит от `service.type` (по умолчанию в чарте — `LoadBalancer`). Если `LoadBalancer` — k3s выдаст внешний IP, а `nodePort` будет выделен на всех нодах.
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+### 3. ServiceAccount, ClusterRole, ClusterRoleBinding
+- Создаются для Traefik, чтобы он мог читать ресурсы Gateway API и IngressRoute.
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+### 4. CRD (если не установлены ранее)
+- `IngressRoute`, `Middleware`, `TLSOption` и др. — CRD Traefik.
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+> Если включён провайдер `kubernetesGateway` — используются CRD **Gateway API** (`GatewayClass`, `Gateway`, `HTTPRoute`), которые должны быть установлены в кластере отдельно (обычно вместе с Gateway API CRDs).
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+### 5. GatewayClass
+- Создаётся ресурс **`GatewayClass`** с контроллером Traefik (`traefik.io/gateway-controller`). Это «класс» для будущих Gateway.
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+### 6. Gateway (Gateway API)
+- Создаётся ресурс **`Gateway`** с двумя слушателями (listeners):
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+| Listener | Порт (ссылка на EntryPoint) | Protocol | NamespacePolicy |
+|---|---|---|---|
+| `web` | 8080 | HTTP | `All` |
+| `traefik` | 8081 | HTTP | `All` |
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+### 7. IngressRoute (для дашборда)
+Создаётся ресурс **`IngressRoute`** (CRD Traefik), который публикует дашборд:
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+- **matchRule**: `Host(\`hostname\`)`
+- **entryPoints**: `traefik` (порт 8100)
+- **Сервис**: внутренний API Traefik (dashboard)
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+Таким образом, дашборд будет доступен по адресу: `http://hostname:8100/` (если `hostname` — IP/Домен, назначенный сервису/ноде).
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+### 8. ConfigMap / Secret
+- **ConfigMap** со статической конфигурацией Traefik (entryPoints, providers, metrics, logs).
+- Возможно, **Secret** для TLS (если используется) — в данной конфигурации TLS не настроен.
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+### 9. RBAC для провайдеров
+- `kubernetesGateway: enabled: true` → Traefik получает права на чтение `Gateway`, `HTTPRoute`, `GatewayClass`.
+- `kubernetesIngress: enabled: false` → классические Ingress не обрабатываются.
 
-## License
-For open source projects, say how it is licensed.
+## Что НЕ создаётся
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+| Ресурс | Причина |
+|---|---|
+| `IngressClass` | `ingressClass.enabled: false` |
+| Классические `Ingress` | `kubernetesIngress.enabled: false` |
+| HTTPS-listener (`websecure`) | `expose.default: false` |
+| Внешний доступ к дашборду через Ingress | Дашборд идёт через `IngressRoute` + EntryPoint `traefik` |
+
+## Схема потоков трафика
+
+```
+Пользователь → Service (LB, exposedPort 8080) → под Traefik: EntryPoint web (8080)
+                                                    ↓
+                                            Gateway API (listener web)
+                                                    ↓
+                                            HTTPRoute (создаётся пользователем)
+                                                    ↓
+                                            Сервис приложения
+
+Админ → Service (LB, exposedPort 8100) → под Traefik: EntryPoint traefik (8100)
+                                                    ↓
+                                            IngressRoute dashboard
+                                                    ↓
+                                            Дашборд Traefik
+
+Prometheus → Service (LB, exposedPort 9100) → под Traefik: EntryPoint metrics (9100)
+```
+
+## Замечания
+
+1. **Gateway API CRDs** должны быть установлены в кластере заранее (например, `kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/...`). Чарт Traefik их не устанавливает.
+
+2. **`metrics.prometheus.enabled: true`** открывает `/metrics` на EntryPoint `metrics` (9100), который опубликован через сервис — это позволяет Prometheus скрейпить метрики.
+
+## Краткая сводка создаваемых объектов
+
+| Ресурс | Имя / параметр | Назначение |
+|---|---|---|
+| Deployment | `traefik` | Под с Traefik |
+| Service | `traefik` (LB/NodePort) | Публикация портов 8080, 8100, 9100 |
+| GatewayClass | `traefik` | Класс Gateway для Traefik |
+| Gateway | `traefik-gateway` (или по имени релиза) | Listeners `web` (8080), `admin` (8081) |
+| IngressRoute | dashboard | Публикация дашборда по Host `hostname` через EntryPoint `traefik` |
+| ConfigMap | traefik | Статическая конфигурация |
+| ServiceAccount + RBAC | traefik | Доступ к Gateway API |
+| CRD (Traefik) | IngressRoute и др. | Если не установлены |
+| CRD (Gateway API) | GatewayClass, Gateway, HTTPRoute | Требуются отдельно |
