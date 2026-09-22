@@ -157,3 +157,17 @@ ref: https://github.com/kgateway-dev/kgateway/tree/main/install/helm/kgateway
 **CRD Gateway API и CRD kgateway** не устанавливаются данным чартом. Они поставляются отдельным чартом `kgateway-crds`, который необходимо установить перед основным чартом.
 
 Также чарт **не разворачивает прокси-серверы (Envoy data plane)**. Прокси создаются динамически контроллером при появлении ресурсов `Gateway` в кластере, а не в момент установки Helm-чарта. Конфигурация прокси определяется ресурсом `GatewayParameters`.
+
+# Удаление kgateway
+
+```
+helm uninstall kgateway -n kgateway-system
+```
+
+```
+helm uninstall kgateway-crds -n kgateway-system
+```
+
+```
+kubectl delete gatewayclass kgateway
+```

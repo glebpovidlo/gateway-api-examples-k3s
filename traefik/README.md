@@ -24,7 +24,7 @@ kubectl create namespace traefik-system
 
 Установка
 ```
-helm install traefik traefik/traefik \
+helm upgrade traefik traefik/traefik -i \
   --namespace traefik-system \
   --values values.yaml
 ```
@@ -39,6 +39,59 @@ helm upgrade traefik traefik/traefik \
 Удаление Helm Chart
 ```
 helm uninstall traefik --namespace traefik-system
+```
+
+## Пример с приложением
+
+```bash
+cd sample-app
+```
+
+1. Заускаем sample-приложение
+
+Применяем манифест sample-приложения
+```bash
+kubectl apply -f httpbin.yaml
+```
+
+Проверяем его
+```bash
+kubectl -n httpbin get pods
+```
+
+2. Настраиваем HTTPRoute для привязки приложения к Gateway
+
+Создаём HTTPRoute в том же namespace, что и sample-приложение:
+```bash
+kubectl apply -f httproute.yaml
+```
+
+Проверяем привязку HTTPRoute:
+```bash
+kubectl get -n httpbin httproute/httpbin -o yaml
+```
+
+3. Отправляем запрос
+
+```bash
+export INGRESS_GW_ADDRESS=$(kubectl get svc traefik -n traefik-system -o=jsonpath="{.status.loadBalancer.ingress[0]['hostname','ip']}")
+```
+```bash
+echo $INGRESS_GW_ADDRESS
+```
+```bash
+curl -i http://$INGRESS_GW_ADDRESS:8080/get
+```
+Можно ещё открыть в баузере и проверить там - `http://<ip_адрес>:8080/get`
+
+4. Очистка
+
+```bash
+kubectl delete httproute httpbin -n httpbin
+```
+
+```bash
+kubectl delete -f httpbin.yaml
 ```
 
 ## Создаваемые Kubernetes-ресурсы

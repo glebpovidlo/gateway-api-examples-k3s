@@ -25,6 +25,8 @@ ports:
     port: 8080    # Порт который слушает под (процесс traefik)
     exposedPort: 8080    # Порт, который открывает Service LB на выданном IP
     nodePort: 30080    # Порт, который открывается на всех нодах кластера для LB
+    expose:
+      default: true    # Обязательно прописываем, иначе порт не появится в Entrypints у сервиса LB
   traefik:
     port: 8100
     exposedPort: 8100

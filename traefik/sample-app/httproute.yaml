@@ -1,0 +1,14 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: httpbin
+  namespace: httpbin
+spec:
+  parentRefs:
+    - name: traefik-gateway    # Имя Gateway, который создаёт kubernetesGateway provider в traefik
+      sectionName: web    # EntryPoint, к которому мы привязываем наш HTTPRoute
+      namespace: traefik-system    # Неймспейс в котором Gateway находится
+  rules:
+    - backendRefs:    # Референс на сервис httpbin для sample-приложения
+        - name: httpbin
+          port: 8000
