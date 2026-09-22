@@ -6,11 +6,12 @@
 
 Папка с инструкцией по установке Traefik Gateway API в k3s.  
 Включает:
- - Установку чарта traefik с кастомными values для создания ентрипоентов web, traefik dashboard и prometheus-метрик.
+  - Установку чарта traefik с кастомными values для создания ентрипоентов web, traefik dashboard и prometheus-метрик.
+  - Деплой и настройку маршрутизации для sample-приложения.
 
 ## [kgateway](kgateway)
 
 Папка с инструкцией по установке kgateway Gateway API в k3s.  
 Включает:
- - Установку чартов kgateway
- - Деплой и настройку маршрутизации для sample-приложения.
+  - Установку чартов kgateway
+  - Деплой и настройку маршрутизации для sample-приложения.
